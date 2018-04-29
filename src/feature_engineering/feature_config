@@ -1,0 +1,106 @@
+#all fearture names
+
+item_id
+#type: one-hot
+
+item_category_list
+#type: multi-hot
+
+item_property_list_1w
+#type: multi-hot
+
+item_brand_id
+#type: one-hot
+
+item_city_id
+#type: one-hot
+
+item_price_level
+#type: one-hot
+
+item_sales_level
+#type: one-hot
+
+item_collected_level
+#type: one-hot
+
+item_pv_level
+#type: one-hot
+
+user_id_3w
+#type: one-hot
+
+user_gender_id
+#type: one-hot
+
+user_occupation_id
+#type: one-hot
+
+user_age_level
+#type: one-hot
+
+user_star_level
+#type: one-hot
+
+context_page_id
+#type: one-hot
+
+shop_id
+#type: one-hot
+
+shop_review_positive_rate
+#type: numerical
+
+shop_review_num_level
+#type: one-hot
+
+shop_star_level
+#type: one-hot
+
+shop_score_service
+#type: numerical
+
+shop_score_delivery
+#type: numerical
+
+shop_score_description
+#type: numerical
+
+predict_category_property
+#type: multi-hot
+
+context_timestamp_sec
+#type: one-hot
+
+context_timestamp_min
+#type: one-hot
+
+context_timestamp_hour
+#type: one-hot
+
+context_timestamp_day
+#type: one-hot
+
+item_price_level_num_norm
+#type: numerical
+
+item_sales_level_num_norm
+#type: numerical
+
+item_collected_level_num_norm
+#type: numerical
+
+item_pv_level_num_norm
+#type: numerical
+
+user_age_level_num_norm
+#type: numerical
+
+user_star_level_num_norm
+#type: numerical
+
+shop_review_num_level_num_norm
+#type: numerical
+
+shop_star_level_num_norm
+#type: numerical
