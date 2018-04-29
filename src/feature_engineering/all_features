@@ -339,9 +339,6 @@ user_cluster_100
 user_cat_view_num
 #type: counting
 
-user_cat_view_num
-#type: counting
-
 feature_comb_1k
 #type: multi-hot
 

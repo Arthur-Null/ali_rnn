@@ -1,9 +1,11 @@
+item_id
 item_category_list
 item_price_level
 item_sales_level
 item_collected_level
 item_pv_level
 item_city_id
+item_brand_id
 user_gender_id
 user_age_level
 user_occupation_id
@@ -16,4 +18,5 @@ shop_score_delivery
 shop_score_description
 context_page_id
 context_timestamp_hour
-user_cat_view_num
+context_timestamp_day
+

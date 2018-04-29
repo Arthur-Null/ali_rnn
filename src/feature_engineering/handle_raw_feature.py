@@ -438,7 +438,6 @@ def get_psedo_label():
 
 
 def handle_raw_feature():
-
     # __pretreatment()
     # with(open(os.path.join(os.path.dirname(__file__), 'all_features'), 'w')) as f:
     #     print('#all fearture names\n', file=f)
@@ -451,8 +450,8 @@ def handle_raw_feature():
     # get_psedo_label()
     # user_clustering(10)
     # user_clustering(100)
-    user_cat_view_num()
-    #cluster_user_cat_view()
+    # user_cat_view_num()
+    # cluster_user_cat_view()
     feature_combination()
     basic_analysis(open(os.path.join(os.path.dirname(__file__), 'all_features')).read().splitlines())
 
