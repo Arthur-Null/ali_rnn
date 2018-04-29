@@ -14,7 +14,7 @@ from sklearn.metrics import log_loss
 
 f = open('feature.pkl', 'rb')
 train_feature, train_label = pkl.load(f)
-test_feature, test_label = pkl.load(f)
+# test_feature, test_label = pkl.load(f)
 id_dict = {
     'train': get_id_list_by_day([1, 2, 3, 4, 5, 6]),
     'validation': get_id_list_by_day([7]),
@@ -97,7 +97,7 @@ def save_sparse_batch(data, label, batch_size, seqlen, name, shuffle=True):
         for j in range(batch_size * i, min(batch_size * (i + 1), total_size)):
             if len(data[j]) < seqlen:
                 seq_len.append(len(data[j]))
-                batch_label.append(label[j])
+                batch_label.append(label[j] + [-1.0 for k in range(seqlen - len(data[j]))])
                 for k in range(len(data[j])):
                     for item in range(feature_size):
                         if data[j][k][item] != 0.:
@@ -105,7 +105,7 @@ def save_sparse_batch(data, label, batch_size, seqlen, name, shuffle=True):
                             value.append(data[j][k][item])
             else:
                 seq_len.append(seqlen)
-                batch_label.append(label[j])
+                batch_label.append(label[j][len(data[j]) - seqlen:])
                 for k in range(seqlen):
                     t = len(data[j]) - seqlen
                     for item in range(feature_size):
@@ -312,30 +312,30 @@ class Rnn(object):
     def save_model(self, global_step=None):
         self.saver.save(self.sess, self.save_path, global_step=global_step)
 
-    def test(self, epoch):
-        batches = get_batch(test_feature, test_label, self.config['batch_size'], "test")
-        prediction = []
-        for batch in tqdm(batches):
-            data, seqlen, label = batch
-            feed_dict = {
-                self.input: data,
-                self.seqlen: seqlen,
-                self.labels: label,
-                self.learning_rate: self.config['learning_rate'],
-                self.is_training: True,
-                self.keep_prob: 0.5
-            }
-            fetches = [self.cross_entropy, self.prediction]
-            result = self.sess.run(fetches, feed_dict=feed_dict)
-            loss, pred = result
-            prediction += pred
-        id_dict = {
-            'train': get_id_list_by_day([1, 2, 3, 4, 5, 6]),
-            'validation': get_id_list_by_day([7]),
-            'test': get_id_list_by_day([8])
-        }
-        data = fetch_data(id_dict=id_dict, config_path='feature_config', missing_handler='mean', del_other=False)
-        submit(pred=prediction, instance_id=data.get_instance_id('test'), file='rnn_submit')
+    # def test(self, epoch):
+    #     batches = get_batch(test_feature, test_label, self.config['batch_size'], "test")
+    #     prediction = []
+    #     for batch in tqdm(batches):
+    #         data, seqlen, label = batch
+    #         feed_dict = {
+    #             self.input: data,
+    #             self.seqlen: seqlen,
+    #             self.labels: label,
+    #             self.learning_rate: self.config['learning_rate'],
+    #             self.is_training: True,
+    #             self.keep_prob: 0.5
+    #         }
+    #         fetches = [self.cross_entropy, self.prediction]
+    #         result = self.sess.run(fetches, feed_dict=feed_dict)
+    #         loss, pred = result
+    #         prediction += pred
+    #     id_dict = {
+    #         'train': get_id_list_by_day([1, 2, 3, 4, 5, 6]),
+    #         'validation': get_id_list_by_day([7]),
+    #         'test': get_id_list_by_day([8])
+    #     }
+    #     data = fetch_data(id_dict=id_dict, config_path='feature_config', missing_handler='mean', del_other=False)
+    #     submit(pred=prediction, instance_id=data.get_instance_id('test'), file='rnn_submit')
 
     def log(self, epoch, result, prefix):
         s = prefix + '\t' + str(epoch)
@@ -394,7 +394,7 @@ class sparse_Rnn(object):
         shape = [None]
         shape.extend([self.config['seq_max_len'], feature_size])
         label_shape = [None]
-        # label_shape.extend([self.config['seq_max_len']])
+        label_shape.extend([self.config['seq_max_len']])
         self.input = tf.sparse_placeholder(
             tf.float32,
             shape=shape,
@@ -429,14 +429,18 @@ class sparse_Rnn(object):
 
         outputs, state = tf.nn.dynamic_rnn(rnn_cell, input, initial_state=initial_state,
                                            sequence_length=self.seqlen)
-        batchsize = tf.shape(outputs)[0]
-        index = tf.range(0, batchsize) * self.config['seq_max_len'] + (self.seqlen - 1)
-        output = tf.gather(tf.reshape(outputs, [-1]), index)
-        self.prediction = output
-        label = self.labels
-        self.label = label
-        self.prediction = output
-        cost = tf.losses.log_loss(label, output, loss_collection=tf.losses.Reduction.MEAN)
+        # batchsize = tf.shape(outputs)[0]
+        # index = tf.range(0, batchsize) * self.config['seq_max_len'] + (self.seqlen - 1)
+        # output = tf.gather(tf.reshape(outputs, [-1]), index)
+        # self.prediction = output
+        # label = self.labels
+        # self.label = label
+        # self.prediction = output\
+        outputs = tf.reshape(outputs, [-1])
+        labels = tf.reshape(self.labels, [-1])
+        loss = tf.losses.log_loss(labels, outputs, loss_collection=None)
+        mask = tf.reshape(tf.sequence_mask(self.seqlen, self.config['seq_max_len']), [-1])
+        cost = tf.reduce_mean(tf.boolean_mask(loss, mask))
         self.cross_entropy = cost
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.config['learning_rate'])
         gvs = optimizer.compute_gradients(cost)
@@ -457,8 +461,7 @@ class sparse_Rnn(object):
     def train_one_epoch(self):
         batches = get_batch(train_feature[:train_size], train_label[:train_size], self.config['batch_size'],
                             "train_sparse")
-        preds = []
-        labels = []
+        losses = []
         for batch in tqdm(batches):
             data, seqlen, label = batch
             feed_dict = {
@@ -469,17 +472,15 @@ class sparse_Rnn(object):
                 self.is_training: True,
                 self.keep_prob: 0.5
             }
-            fetches = [self.train_step, self.cross_entropy, self.prediction, self.label]
+            fetches = [self.train_step, self.cross_entropy]
             result = self.sess.run(fetches, feed_dict=feed_dict)
-            _, loss, pred, label = result
-            preds += pred.tolist()
-            labels += label.tolist()
-        train_loss = log_loss(labels, preds)
+            _, loss = result
+            losses.append(loss)
+        train_loss = np.mean(losses)
 
         batches = get_batch(train_feature[train_size:], train_label[train_size:], self.config['batch_size'],
                             "valid_sparse")
-        preds = []
-        labels = []
+        losses = []
         for batch in tqdm(batches):
             data, seqlen, label = batch
             feed_dict = {
@@ -490,12 +491,11 @@ class sparse_Rnn(object):
                 self.is_training: True,
                 self.keep_prob: 0.5
             }
-            fetches = [self.cross_entropy, self.prediction, self.label]
+            fetches = [self.cross_entropy]
             result = self.sess.run(fetches, feed_dict=feed_dict)
-            loss, pred, label = result
-            preds += pred.tolist()
-            labels += label.tolist()
-        valid_loss = log_loss(labels, preds)
+            loss = result
+            losses.append(loss)
+        valid_loss = np.mean(losses)
         print("Train_Loss = " + "{:.4f}".format(train_loss))
         print("Valid_Loss = " + "{:.4f}".format(valid_loss))
         return train_loss, valid_loss
@@ -530,30 +530,30 @@ class sparse_Rnn(object):
     def save_model(self, global_step=None):
         self.saver.save(self.sess, self.save_path, global_step=global_step)
 
-    def test(self, epoch):
-        batches = get_batch(test_feature, test_label, self.config['batch_size'], "test_sparse")
-        prediction = []
-        for batch in tqdm(batches):
-            data, seqlen, label = batch
-            feed_dict = {
-                self.input: data,
-                self.seqlen: seqlen,
-                self.labels: label,
-                self.learning_rate: self.config['learning_rate'],
-                self.is_training: True,
-                self.keep_prob: 0.5
-            }
-            fetches = [self.cross_entropy, self.prediction]
-            result = self.sess.run(fetches, feed_dict=feed_dict)
-            loss, pred = result
-            prediction += pred.tolist()
-        id_dict = {
-            'train': get_id_list_by_day([1, 2, 3, 4, 5, 6]),
-            'validation': get_id_list_by_day([7]),
-            'test': get_id_list_by_day([8])
-        }
-        data = fetch_data(id_dict=id_dict, config_path='feature_config', missing_handler='mean', del_other=False)
-        submit(pred=prediction, instance_id=data.get_instance_id('test'), file='rnn_submit')
+    # def test(self, epoch):
+    #     batches = get_batch(test_feature, test_label, self.config['batch_size'], "test_sparse")
+    #     prediction = []
+    #     for batch in tqdm(batches):
+    #         data, seqlen, label = batch
+    #         feed_dict = {
+    #             self.input: data,
+    #             self.seqlen: seqlen,
+    #             self.labels: label,
+    #             self.learning_rate: self.config['learning_rate'],
+    #             self.is_training: True,
+    #             self.keep_prob: 0.5
+    #         }
+    #         fetches = [self.cross_entropy, self.prediction]
+    #         result = self.sess.run(fetches, feed_dict=feed_dict)
+    #         loss, pred = result
+    #         prediction += pred.tolist()
+    #     id_dict = {
+    #         'train': get_id_list_by_day([1, 2, 3, 4, 5, 6]),
+    #         'validation': get_id_list_by_day([7]),
+    #         'test': get_id_list_by_day([8])
+    #     }
+    #     data = fetch_data(id_dict=id_dict, config_path='feature_config', missing_handler='mean', del_other=False)
+    #     submit(pred=prediction, instance_id=data.get_instance_id('test'), file='rnn_submit')
 
     def log(self, epoch, result, prefix):
         s = prefix + '\t' + str(epoch)
@@ -576,14 +576,14 @@ class sparse_Rnn(object):
 if __name__ == '__main__':
     config_list = []
     for learning_rate in [1e-2, 1e-3, 1e-4, 1e-5]:
-        for batch_size in [3000]:
+        for batch_size in [1500]:
             for hidden_size in [256, 512, 128]:
                 config = {'learning_rate': learning_rate, 'batch_size': batch_size, 'hidden_size': hidden_size,
                           'seq_max_len': 50, 'epoch': 500}
                 config_list.append(config)
-    # save_sparse_batch(train_feature[:train_size], train_label[:train_size], 3000, 50, 'train_sparse')
-    # save_sparse_batch(train_feature[train_size:], train_label[train_size:], 3000, 50, 'valid_sparse')
-    # save_sparse_batch(test_feature, test_label, 3000, 50, 'test_sparse')
+    save_sparse_batch(train_feature[:train_size], train_label[:train_size], 1500, 50, 'train_sparse')
+    save_sparse_batch(train_feature[train_size:], train_label[train_size:], 1500, 50, 'valid_sparse')
+    # save_sparse_batch(test_feature, test_label, 1500, 50, 'test_sparse')
 
     for config in config_list:
         best_loss = 100000
